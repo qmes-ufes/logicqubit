@@ -217,28 +217,28 @@ class _TensorNetworkNumeric:
 
     @staticmethod
     def matmul(left, right):
-        left_tensor = _TensorNetworkNumeric._ensure_tensor(left)
-        right_tensor = _TensorNetworkNumeric._ensure_tensor(right)
+        left_tensor = _TensorNetworkNumeric.to_tensor(left)
+        right_tensor = _TensorNetworkNumeric.to_tensor(right)
         left_tensor, right_tensor = _TensorNetworkNumeric._promote_dtype(left_tensor, right_tensor)
         if left_tensor.ndim == 0 or right_tensor.ndim == 0:
-            return _TensorNetworkNumeric._to_numpy_result(left_tensor * right_tensor)
+            return left_tensor * right_tensor
 
         left_node = tn.Node(left_tensor, name="matrix_left")
         right_node = tn.Node(right_tensor, name="matrix_right")
         if not left_node.edges or not right_node.edges:
-            return _TensorNetworkNumeric._to_numpy_result(left_tensor * right_tensor)
+            return left_tensor * right_tensor
 
         tn.connect(left_node.edges[-1], right_node.edges[0])
         result = tn.contract_between(left_node, right_node, name="matrix_product")
-        return _TensorNetworkNumeric._to_numpy_result(result.tensor)
+        return result.tensor
 
     @staticmethod
     def kron(left, right):
-        left_tensor = _TensorNetworkNumeric._ensure_tensor(left)
-        right_tensor = _TensorNetworkNumeric._ensure_tensor(right)
+        left_tensor = _TensorNetworkNumeric.to_tensor(left)
+        right_tensor = _TensorNetworkNumeric.to_tensor(right)
         left_tensor, right_tensor = _TensorNetworkNumeric._promote_dtype(left_tensor, right_tensor)
         if left_tensor.ndim == 0 or right_tensor.ndim == 0:
-            return _TensorNetworkNumeric._to_numpy_result(left_tensor * right_tensor)
+            return left_tensor * right_tensor
 
         left_shape, right_shape = _TensorNetworkNumeric._match_shapes(left_tensor.shape, right_tensor.shape)
         left_view = _TensorNetworkNumeric._reshape(left_tensor, left_shape)
@@ -249,12 +249,12 @@ class _TensorNetworkNumeric:
             tn.Node(right_view, name="kron_right"),
             name="kron_outer"
         )
-        tensor = _TensorNetworkNumeric._ensure_tensor(kron_node.tensor)
+        tensor = _TensorNetworkNumeric.to_tensor(kron_node.tensor)
         order = _TensorNetworkNumeric._interleave_order(len(left_shape))
         tensor = _TensorNetworkNumeric._transpose(tensor, order)
         result_shape = tuple(l * r for l, r in zip(left_shape, right_shape))
         tensor = _TensorNetworkNumeric._reshape(tensor, result_shape)
-        return _TensorNetworkNumeric._to_numpy_result(tensor)
+        return tensor
 
     @staticmethod
     def _match_shapes(left_shape, right_shape):
@@ -274,21 +274,15 @@ class _TensorNetworkNumeric:
         return order
 
     @staticmethod
-    def _to_numpy_result(value):
+    def to_host(value):
         if isinstance(value, np.ndarray):
             return value
         if torch is not None and isinstance(value, torch.Tensor):
             return value.detach().cpu().numpy()
         return np.array(value)
 
-    @staticmethod
-    def _to_ndarray(value):
-        if isinstance(value, np.ndarray):
-            return value
-        return np.array(value)
-
     @classmethod
-    def _ensure_tensor(cls, value):
+    def to_tensor(cls, value):
         if cls._current_backend == "pytorch":
             return cls._to_torch_tensor(value)
         return cls._to_ndarray(value)
@@ -333,30 +327,30 @@ class _TensorNetworkNumeric:
 class Matrix:
 
     def __init__(self, matrix, numeric=True):
-        self.__matrix = matrix
         self.__numeric = numeric
-        if isinstance(matrix, list):  # if it's a list
-            if self.__numeric:
-                self.__matrix = np.array(matrix)  # create matrix with numpy
-            else:
-                self.__matrix = sp.Matrix(matrix)  # create matrix with sympy
+        if isinstance(matrix, Matrix):
+            self.__matrix = matrix._data()
+        elif self.__numeric:
+            self.__matrix = _TensorNetworkNumeric.to_tensor(matrix)
         else:
-            if isinstance(matrix, Matrix):  # if it's a Matrix class
-                self.__matrix = matrix.get()
+            if isinstance(matrix, list):
+                self.__matrix = sp.Matrix(matrix)
             else:
                 self.__matrix = matrix
 
     def __add__(self, other):  # sum of the matrices
-        result = self.__matrix + other.get()
+        operand = other._data() if isinstance(other, Matrix) else other
+        result = self.__matrix + operand
         return Matrix(result, self.__numeric)
 
     def __sub__(self, other):  # subtraction of the matrices
-        result = self.__matrix - other.get()
+        operand = other._data() if isinstance(other, Matrix) else other
+        result = self.__matrix - operand
         return Matrix(result, self.__numeric)
 
     def __mul__(self, other):  # product of the matrices
         if isinstance(other, Matrix):
-            other = other.get()
+            other = other._data()
             if self.__numeric:
                 result = _TensorNetworkNumeric.matmul(self.__matrix, other)
             else:
@@ -370,36 +364,60 @@ class Matrix:
         return Matrix(result, self.__numeric)
 
     def __eq__(self, other):
-        return self.__matrix == other.get()
+        operand = other._data() if isinstance(other, Matrix) else other
+        return self.__matrix == operand
 
     def __str__(self):
+        if self.__numeric:
+            return str(self.get())
         return str(self.__matrix)
 
     def kron(self, other):  # Kronecker product
         if self.__numeric:
-            result = _TensorNetworkNumeric.kron(self.__matrix, other.get())
+            result = _TensorNetworkNumeric.kron(self.__matrix, other._data())
         else:
             result = TensorProduct(self.__matrix, other.get())
         return Matrix(result, self.__numeric)
 
     def get(self):
+        if self.__numeric:
+            return _TensorNetworkNumeric.to_host(self.__matrix)
+        return self.__matrix
+
+    def _data(self):
         return self.__matrix
 
     def getAngles(self):  # converts state coefficients into angles
         angles = []
         if self.__numeric:
-            angles = np.angle(self.__matrix)
+            host_matrix = _TensorNetworkNumeric.to_host(self.__matrix)
+            angles = np.angle(host_matrix)
         else:
             print("This session is symbolic!")
         return angles
 
     def trace(self):  # get matrix trace
-        result = self.__matrix.trace()
+        if self.__numeric:
+            matrix = self.__matrix
+            if isinstance(matrix, np.ndarray):
+                result = matrix.trace()
+            elif torch is not None and isinstance(matrix, torch.Tensor):
+                result = torch.trace(matrix)
+            else:
+                result = np.trace(np.array(matrix))
+        else:
+            result = self.__matrix.trace()
         return Matrix(result, self.__numeric)
 
     def adjoint(self):  # get matrix adjoint
         if self.__numeric:
-            result = self.__matrix.transpose().conj()
+            matrix = self.__matrix
+            if isinstance(matrix, np.ndarray):
+                result = matrix.transpose().conj()
+            elif torch is not None and isinstance(matrix, torch.Tensor):
+                result = matrix.transpose(-2, -1).conj()
+            else:
+                result = np.transpose(np.array(matrix)).conj()
         else:
             result = self.__matrix.transpose().conjugate()
         return Matrix(result, self.__numeric)

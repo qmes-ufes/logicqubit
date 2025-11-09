@@ -281,7 +281,7 @@ class LogicQuBit(Qubits, Gates, Circuit):
             if not self.isFirstLeft():
                 tlist.reverse()
             M = self.kronProduct(tlist)
-            measure = (density_m * M).get().trace()  # expected value
+            measure = (density_m * M).trace().get()  # expected value
             result.append(measure)
         self.setMeasuredValues(result)
         return result
