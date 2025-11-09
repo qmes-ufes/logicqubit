@@ -23,6 +23,9 @@ class LogicQuBit(Qubits, Gates, Circuit):
     def __init__(self, number_of_qubits = 3, **kwargs):
         symbolic = kwargs.get('symbolic', False)
         first_left = kwargs.get('first_left', True)  # qubit 1 is the left most
+        tn_backend = kwargs.get('tn_backend')
+        enable_cuda = kwargs.get('enable_cuda', False)
+        Hilbert.configureTensorBackend(tn_backend, enable_cuda)
         super().setNumeric(not symbolic)
         super().setFirstLeft(first_left)
         super().setNumberOfQubits(number_of_qubits)

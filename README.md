@@ -33,6 +33,16 @@ pip install logicqubit
 
 logicQuBit  = LogicQuBit(n_qubits, symbolic = True)
 
+Additional optional keyword arguments let you choose the TensorNetwork backend and toggle CUDA acceleration:
+
+```python
+logicQuBit = LogicQuBit(
+    n_qubits,
+    tn_backend="numpy",   # or "jax", "pytorch", "tensorflow"
+    enable_cuda=False     # set to True to try a GPU-capable backend
+)
+```
+
 Where n_qubits is the number of qubits, and symbolic defines whether the values a and b of the qubits will be symbolic or not, if the symbolic input is omitted the calculation will be numeric.
 
 ## To instantiate a qubit
@@ -120,4 +130,3 @@ logicQuBit.Plot()
 # Other code samples
 
 https://github.com/clnrp/logicqubit-algorithms
-

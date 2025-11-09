@@ -5,12 +5,13 @@
 # e-mail: cleonerp@gmail.com
 # Apache License
 
+import importlib.util
+import warnings
+
 import numpy as np
 import tensornetwork as tn
 from sympy.physics.quantum import TensorProduct
 from logicqubit.utils import *
-
-tn.set_default_backend("numpy")
 
 """
 Hilbert space
@@ -19,6 +20,8 @@ class Hilbert():
     __number_of_qubits = 1
     __numeric = True
     __first_left = True
+    __tn_backend = "numpy"
+    __cuda_enabled = False
 
     @staticmethod
     def ket(value):  # get ket state
@@ -87,9 +90,71 @@ class Hilbert():
     def isFirstLeft():
         return Hilbert.__first_left
 
+    @staticmethod
+    def configureTensorBackend(backend=None, enable_cuda=False):
+        resolved_backend = _TensorNetworkNumeric.resolve_backend(backend, enable_cuda)
+        backend_used, cuda_enabled = _TensorNetworkNumeric.set_backend(resolved_backend, enable_cuda)
+        Hilbert.__tn_backend = backend_used
+        Hilbert.__cuda_enabled = cuda_enabled
+
+    @staticmethod
+    def getTensorBackend():
+        return Hilbert.__tn_backend
+
+    @staticmethod
+    def isCudaEnabled():
+        return Hilbert.__cuda_enabled
+
 
 class _TensorNetworkNumeric:
     """Helper methods that rely on TensorNetwork operations for numeric work."""
+
+    _DEFAULT_BACKEND = "numpy"
+    _GPU_BACKENDS = (("jax", "jax"), ("pytorch", "torch"), ("tensorflow", "tensorflow"))
+    _GPU_BACKEND_NAMES = tuple(name for name, _ in _GPU_BACKENDS)
+    _current_backend = _DEFAULT_BACKEND
+    _cuda_enabled = False
+
+    @classmethod
+    def resolve_backend(cls, requested_backend, enable_cuda):
+        if requested_backend:
+            return requested_backend
+        if enable_cuda:
+            for backend_name, module_name in cls._GPU_BACKENDS:
+                if importlib.util.find_spec(module_name):
+                    return backend_name
+            warnings.warn("CUDA flag requested, but no GPU-capable backend was found. Falling back to numpy.",
+                          RuntimeWarning)
+        return cls._DEFAULT_BACKEND
+
+    @classmethod
+    def set_backend(cls, backend, enable_cuda):
+        try:
+            tn.set_default_backend(backend)
+            cls._current_backend = backend
+            cls._cuda_enabled = enable_cuda and cls._is_gpu_backend(backend)
+            if enable_cuda and not cls._cuda_enabled:
+                warnings.warn(f"CUDA was requested, but backend '{backend}' does not provide GPU acceleration.",
+                              RuntimeWarning)
+        except Exception as error:
+            warnings.warn(f"TensorNetwork backend '{backend}' is unavailable ({error}). Reverting to numpy.",
+                          RuntimeWarning)
+            tn.set_default_backend(cls._DEFAULT_BACKEND)
+            cls._current_backend = cls._DEFAULT_BACKEND
+            cls._cuda_enabled = False
+        return cls._current_backend, cls._cuda_enabled
+
+    @classmethod
+    def get_backend(cls):
+        return cls._current_backend
+
+    @classmethod
+    def is_cuda_enabled(cls):
+        return cls._cuda_enabled
+
+    @classmethod
+    def _is_gpu_backend(cls, backend):
+        return backend in cls._GPU_BACKEND_NAMES
 
     @staticmethod
     def _to_ndarray(value):
@@ -111,7 +176,7 @@ class _TensorNetworkNumeric:
 
         tn.connect(left_node.edges[-1], right_node.edges[0])
         result = tn.contract_between(left_node, right_node, name="matrix_product")
-        return result.tensor
+        return np.array(result.tensor)
 
     @staticmethod
     def kron(left, right):
@@ -129,7 +194,7 @@ class _TensorNetworkNumeric:
             tn.Node(right_view, name="kron_right"),
             name="kron_outer"
         )
-        tensor = kron_node.tensor
+        tensor = np.array(kron_node.tensor)
         order = _TensorNetworkNumeric._interleave_order(len(left_shape))
         tensor = np.transpose(tensor, order)
         result_shape = tuple(l * r for l, r in zip(left_shape, right_shape))
@@ -226,3 +291,7 @@ class Matrix:
         else:
             result = self.__matrix.transpose().conjugate()
         return Matrix(result, self.__numeric)
+
+
+# Ensure TensorNetwork starts on the default backend.
+Hilbert.configureTensorBackend()
