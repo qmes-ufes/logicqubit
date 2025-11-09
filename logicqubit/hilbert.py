@@ -13,6 +13,11 @@ import tensornetwork as tn
 from sympy.physics.quantum import TensorProduct
 from logicqubit.utils import *
 
+try:
+    import torch
+except ImportError:  # pragma: no cover - torch is optional at runtime
+    torch = None
+
 """
 Hilbert space
 """
@@ -114,6 +119,7 @@ class _TensorNetworkNumeric:
     _GPU_BACKEND_NAMES = tuple(name for name, _ in _GPU_BACKENDS)
     _current_backend = _DEFAULT_BACKEND
     _cuda_enabled = False
+    _torch_device = None
 
     @classmethod
     def resolve_backend(cls, requested_backend, enable_cuda):
@@ -132,16 +138,14 @@ class _TensorNetworkNumeric:
         try:
             tn.set_default_backend(backend)
             cls._current_backend = backend
-            cls._cuda_enabled = enable_cuda and cls._is_gpu_backend(backend)
-            if enable_cuda and not cls._cuda_enabled:
-                warnings.warn(f"CUDA was requested, but backend '{backend}' does not provide GPU acceleration.",
-                              RuntimeWarning)
+            cls._cuda_enabled = cls._activate_cuda(enable_cuda, backend)
         except Exception as error:
             warnings.warn(f"TensorNetwork backend '{backend}' is unavailable ({error}). Reverting to numpy.",
                           RuntimeWarning)
             tn.set_default_backend(cls._DEFAULT_BACKEND)
             cls._current_backend = cls._DEFAULT_BACKEND
             cls._cuda_enabled = False
+            cls._torch_device = None
         return cls._current_backend, cls._cuda_enabled
 
     @classmethod
@@ -156,6 +160,33 @@ class _TensorNetworkNumeric:
     def _is_gpu_backend(cls, backend):
         return backend in cls._GPU_BACKEND_NAMES
 
+    @classmethod
+    def _activate_cuda(cls, enable_cuda, backend):
+        if not enable_cuda:
+            cls._torch_device = None
+            return False
+        if not cls._is_gpu_backend(backend):
+            warnings.warn(f"CUDA was requested, but backend '{backend}' does not provide GPU acceleration.",
+                          RuntimeWarning)
+            cls._torch_device = None
+            return False
+        if backend != "pytorch":
+            return True
+        if torch is None:
+            warnings.warn("PyTorch backend selected but torch is not installed. Falling back to CPU numpy backend.",
+                          RuntimeWarning)
+            tn.set_default_backend(cls._DEFAULT_BACKEND)
+            cls._current_backend = cls._DEFAULT_BACKEND
+            cls._torch_device = None
+            return False
+        if not torch.cuda.is_available():
+            warnings.warn("CUDA was requested, but PyTorch could not find a CUDA-capable device. Running on CPU.",
+                          RuntimeWarning)
+            cls._torch_device = torch.device("cpu")
+            return False
+        cls._torch_device = torch.device("cuda")
+        return True
+
     @staticmethod
     def _to_ndarray(value):
         if isinstance(value, np.ndarray):
@@ -166,48 +197,64 @@ class _TensorNetworkNumeric:
     def _promote_dtype(*arrays):
         if not arrays:
             return tuple()
+        backend = _TensorNetworkNumeric._current_backend
+        if backend == "pytorch":
+            return _TensorNetworkNumeric._promote_torch_dtype(*arrays)
+        if backend != "numpy":
+            return arrays
         target_dtype = np.result_type(*arrays)
         return tuple(np.asarray(array, dtype=target_dtype) for array in arrays)
 
     @staticmethod
+    def _promote_torch_dtype(*tensors):
+        if torch is None or not tensors:
+            return tensors
+        target_dtype = tensors[0].dtype
+        for tensor in tensors[1:]:
+            target_dtype = torch.promote_types(target_dtype, tensor.dtype)
+        promoted = tuple(tensor.to(target_dtype) if tensor.dtype != target_dtype else tensor for tensor in tensors)
+        return promoted
+
+    @staticmethod
     def matmul(left, right):
-        left_tensor = _TensorNetworkNumeric._to_ndarray(left)
-        right_tensor = _TensorNetworkNumeric._to_ndarray(right)
+        left_tensor = _TensorNetworkNumeric._ensure_tensor(left)
+        right_tensor = _TensorNetworkNumeric._ensure_tensor(right)
         left_tensor, right_tensor = _TensorNetworkNumeric._promote_dtype(left_tensor, right_tensor)
         if left_tensor.ndim == 0 or right_tensor.ndim == 0:
-            return left_tensor * right_tensor
+            return _TensorNetworkNumeric._to_numpy_result(left_tensor * right_tensor)
 
         left_node = tn.Node(left_tensor, name="matrix_left")
         right_node = tn.Node(right_tensor, name="matrix_right")
         if not left_node.edges or not right_node.edges:
-            return left_tensor * right_tensor
+            return _TensorNetworkNumeric._to_numpy_result(left_tensor * right_tensor)
 
         tn.connect(left_node.edges[-1], right_node.edges[0])
         result = tn.contract_between(left_node, right_node, name="matrix_product")
-        return np.array(result.tensor)
+        return _TensorNetworkNumeric._to_numpy_result(result.tensor)
 
     @staticmethod
     def kron(left, right):
-        left_tensor = _TensorNetworkNumeric._to_ndarray(left)
-        right_tensor = _TensorNetworkNumeric._to_ndarray(right)
+        left_tensor = _TensorNetworkNumeric._ensure_tensor(left)
+        right_tensor = _TensorNetworkNumeric._ensure_tensor(right)
         left_tensor, right_tensor = _TensorNetworkNumeric._promote_dtype(left_tensor, right_tensor)
         if left_tensor.ndim == 0 or right_tensor.ndim == 0:
-            return left_tensor * right_tensor
+            return _TensorNetworkNumeric._to_numpy_result(left_tensor * right_tensor)
 
         left_shape, right_shape = _TensorNetworkNumeric._match_shapes(left_tensor.shape, right_tensor.shape)
-        left_view = left_tensor.reshape(left_shape)
-        right_view = right_tensor.reshape(right_shape)
+        left_view = _TensorNetworkNumeric._reshape(left_tensor, left_shape)
+        right_view = _TensorNetworkNumeric._reshape(right_tensor, right_shape)
 
         kron_node = tn.outer_product(
             tn.Node(left_view, name="kron_left"),
             tn.Node(right_view, name="kron_right"),
             name="kron_outer"
         )
-        tensor = np.array(kron_node.tensor)
+        tensor = _TensorNetworkNumeric._ensure_tensor(kron_node.tensor)
         order = _TensorNetworkNumeric._interleave_order(len(left_shape))
-        tensor = np.transpose(tensor, order)
+        tensor = _TensorNetworkNumeric._transpose(tensor, order)
         result_shape = tuple(l * r for l, r in zip(left_shape, right_shape))
-        return tensor.reshape(result_shape)
+        tensor = _TensorNetworkNumeric._reshape(tensor, result_shape)
+        return _TensorNetworkNumeric._to_numpy_result(tensor)
 
     @staticmethod
     def _match_shapes(left_shape, right_shape):
@@ -225,6 +272,62 @@ class _TensorNetworkNumeric:
         for i in range(rank):
             order.extend([i, i + rank])
         return order
+
+    @staticmethod
+    def _to_numpy_result(value):
+        if isinstance(value, np.ndarray):
+            return value
+        if torch is not None and isinstance(value, torch.Tensor):
+            return value.detach().cpu().numpy()
+        return np.array(value)
+
+    @staticmethod
+    def _to_ndarray(value):
+        if isinstance(value, np.ndarray):
+            return value
+        return np.array(value)
+
+    @classmethod
+    def _ensure_tensor(cls, value):
+        if cls._current_backend == "pytorch":
+            return cls._to_torch_tensor(value)
+        return cls._to_ndarray(value)
+
+    @classmethod
+    def _to_torch_tensor(cls, value):
+        if torch is None:
+            raise RuntimeError("PyTorch backend requested, but torch is not installed.")
+        if isinstance(value, torch.Tensor):
+            tensor = value
+        else:
+            np_value = np.array(value)
+            dtype = torch.complex128 if np.iscomplexobj(np_value) else torch.float64
+            tensor = torch.as_tensor(np_value, dtype=dtype)
+        # Ensure tensors used for linear algebra are floating/complex types.
+        if tensor.dtype in (torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8, torch.bool):
+            tensor = tensor.to(torch.float64)
+        elif tensor.is_floating_point() and tensor.dtype != torch.float64:
+            tensor = tensor.to(torch.float64)
+        elif tensor.is_complex() and tensor.dtype != torch.complex128:
+            tensor = tensor.to(torch.complex128)
+        device = cls._torch_device if cls._cuda_enabled and cls._torch_device is not None else torch.device("cpu")
+        return tensor.to(device)
+
+    @staticmethod
+    def _reshape(tensor, shape):
+        if isinstance(tensor, np.ndarray):
+            return tensor.reshape(shape)
+        if torch is not None and isinstance(tensor, torch.Tensor):
+            return tensor.reshape(shape)
+        return np.reshape(tensor, shape)
+
+    @staticmethod
+    def _transpose(tensor, order):
+        if isinstance(tensor, np.ndarray):
+            return np.transpose(tensor, order)
+        if torch is not None and isinstance(tensor, torch.Tensor):
+            return tensor.permute(order)
+        return np.transpose(np.array(tensor), order)
 
 
 class Matrix:
