@@ -25,6 +25,8 @@ class LogicQuBit(Qubits, Gates, Circuit):
         first_left = kwargs.get('first_left', True)  # qubit 1 is the left most
         tn_backend = kwargs.get('tn_backend')
         enable_cuda = kwargs.get('enable_cuda', False)
+        if enable_cuda and tn_backend is None:
+            tn_backend = "pytorch"
         Hilbert.configureTensorBackend(tn_backend, enable_cuda)
         super().setNumeric(not symbolic)
         super().setFirstLeft(first_left)

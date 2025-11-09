@@ -163,9 +163,17 @@ class _TensorNetworkNumeric:
         return np.array(value)
 
     @staticmethod
+    def _promote_dtype(*arrays):
+        if not arrays:
+            return tuple()
+        target_dtype = np.result_type(*arrays)
+        return tuple(np.asarray(array, dtype=target_dtype) for array in arrays)
+
+    @staticmethod
     def matmul(left, right):
         left_tensor = _TensorNetworkNumeric._to_ndarray(left)
         right_tensor = _TensorNetworkNumeric._to_ndarray(right)
+        left_tensor, right_tensor = _TensorNetworkNumeric._promote_dtype(left_tensor, right_tensor)
         if left_tensor.ndim == 0 or right_tensor.ndim == 0:
             return left_tensor * right_tensor
 
@@ -182,6 +190,7 @@ class _TensorNetworkNumeric:
     def kron(left, right):
         left_tensor = _TensorNetworkNumeric._to_ndarray(left)
         right_tensor = _TensorNetworkNumeric._to_ndarray(right)
+        left_tensor, right_tensor = _TensorNetworkNumeric._promote_dtype(left_tensor, right_tensor)
         if left_tensor.ndim == 0 or right_tensor.ndim == 0:
             return left_tensor * right_tensor
 
