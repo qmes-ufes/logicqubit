@@ -120,6 +120,8 @@ class _TensorNetworkNumeric:
     _current_backend = _DEFAULT_BACKEND
     _cuda_enabled = False
     _torch_device = None
+    _torch_real_dtype = None
+    _torch_complex_dtype = None
 
     @classmethod
     def resolve_backend(cls, requested_backend, enable_cuda):
@@ -164,11 +166,17 @@ class _TensorNetworkNumeric:
     def _activate_cuda(cls, enable_cuda, backend):
         if not enable_cuda:
             cls._torch_device = None
+            if torch is not None:
+                cls._torch_real_dtype = torch.float64
+                cls._torch_complex_dtype = torch.complex128
             return False
         if not cls._is_gpu_backend(backend):
             warnings.warn(f"CUDA was requested, but backend '{backend}' does not provide GPU acceleration.",
                           RuntimeWarning)
             cls._torch_device = None
+            if torch is not None:
+                cls._torch_real_dtype = torch.float64
+                cls._torch_complex_dtype = torch.complex128
             return False
         if backend != "pytorch":
             return True
@@ -178,13 +186,19 @@ class _TensorNetworkNumeric:
             tn.set_default_backend(cls._DEFAULT_BACKEND)
             cls._current_backend = cls._DEFAULT_BACKEND
             cls._torch_device = None
+            cls._torch_real_dtype = torch.float64
+            cls._torch_complex_dtype = torch.complex128
             return False
         if not torch.cuda.is_available():
             warnings.warn("CUDA was requested, but PyTorch could not find a CUDA-capable device. Running on CPU.",
                           RuntimeWarning)
             cls._torch_device = torch.device("cpu")
+            cls._torch_real_dtype = torch.float64
+            cls._torch_complex_dtype = torch.complex128
             return False
         cls._torch_device = torch.device("cuda")
+        cls._torch_real_dtype = torch.float32
+        cls._torch_complex_dtype = torch.complex64
         return True
 
     @staticmethod
@@ -321,7 +335,12 @@ class _TensorNetworkNumeric:
     def to_tensor(cls, value):
         if cls._current_backend == "pytorch":
             return cls._to_torch_tensor(value)
-        return cls._to_ndarray(value)
+        array = cls._to_ndarray(value)
+        if np.iscomplexobj(array):
+            return np.asarray(array, dtype=np.complex128)
+        if not np.issubdtype(array.dtype, np.floating):
+            return np.asarray(array, dtype=np.float64)
+        return array
 
     @classmethod
     def _to_torch_tensor(cls, value):
@@ -331,15 +350,15 @@ class _TensorNetworkNumeric:
             tensor = value
         else:
             np_value = np.array(value)
-            dtype = torch.complex128 if np.iscomplexobj(np_value) else torch.float64
+            dtype = cls._torch_complex_dtype if np.iscomplexobj(np_value) else cls._torch_real_dtype
             tensor = torch.as_tensor(np_value, dtype=dtype)
         # Ensure tensors used for linear algebra are floating/complex types.
         if tensor.dtype in (torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8, torch.bool):
-            tensor = tensor.to(torch.float64)
-        elif tensor.is_floating_point() and tensor.dtype != torch.float64:
-            tensor = tensor.to(torch.float64)
-        elif tensor.is_complex() and tensor.dtype != torch.complex128:
-            tensor = tensor.to(torch.complex128)
+            tensor = tensor.to(cls._torch_real_dtype)
+        elif tensor.is_floating_point() and tensor.dtype != cls._torch_real_dtype:
+            tensor = tensor.to(cls._torch_real_dtype)
+        elif tensor.is_complex() and tensor.dtype != cls._torch_complex_dtype:
+            tensor = tensor.to(cls._torch_complex_dtype)
         device = cls._torch_device if cls._cuda_enabled and cls._torch_device is not None else torch.device("cpu")
         return tensor.to(device)
 
