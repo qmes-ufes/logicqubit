@@ -223,6 +223,12 @@ class _TensorNetworkNumeric:
         if left_tensor.ndim == 0 or right_tensor.ndim == 0:
             return left_tensor * right_tensor
 
+        backend = _TensorNetworkNumeric._current_backend
+        if backend == "pytorch" and torch is not None:
+            return torch.matmul(left_tensor, right_tensor)
+        if backend == "numpy":
+            return np.matmul(left_tensor, right_tensor)
+
         left_node = tn.Node(left_tensor, name="matrix_left")
         right_node = tn.Node(right_tensor, name="matrix_right")
         if not left_node.edges or not right_node.edges:
@@ -244,16 +250,24 @@ class _TensorNetworkNumeric:
         left_view = _TensorNetworkNumeric._reshape(left_tensor, left_shape)
         right_view = _TensorNetworkNumeric._reshape(right_tensor, right_shape)
 
-        kron_node = tn.outer_product(
-            tn.Node(left_view, name="kron_left"),
-            tn.Node(right_view, name="kron_right"),
-            name="kron_outer"
-        )
-        tensor = _TensorNetworkNumeric.to_tensor(kron_node.tensor)
-        order = _TensorNetworkNumeric._interleave_order(len(left_shape))
-        tensor = _TensorNetworkNumeric._transpose(tensor, order)
-        result_shape = tuple(l * r for l, r in zip(left_shape, right_shape))
-        tensor = _TensorNetworkNumeric._reshape(tensor, result_shape)
+        backend = _TensorNetworkNumeric._current_backend
+        if backend == "pytorch" and torch is not None:
+            tensor = _TensorNetworkNumeric._torch_kron(left_view, right_view, left_shape, right_shape)
+        elif backend == "numpy":
+            tensor = _TensorNetworkNumeric._numpy_kron(left_view, right_view, left_shape, right_shape)
+        else:
+            kron_node = tn.outer_product(
+                tn.Node(left_view, name="kron_left"),
+                tn.Node(right_view, name="kron_right"),
+                name="kron_outer"
+            )
+            tensor = _TensorNetworkNumeric.to_tensor(kron_node.tensor)
+            order = _TensorNetworkNumeric._interleave_order(len(left_shape))
+            tensor = _TensorNetworkNumeric._transpose(tensor, order)
+            result_shape = tuple(l * r for l, r in zip(left_shape, right_shape))
+            tensor = _TensorNetworkNumeric._reshape(tensor, result_shape)
+            return tensor
+
         return tensor
 
     @staticmethod
@@ -272,6 +286,28 @@ class _TensorNetworkNumeric:
         for i in range(rank):
             order.extend([i, i + rank])
         return order
+
+    @staticmethod
+    def _numpy_kron(left_view, right_view, left_shape, right_shape):
+        left_flat = left_view.reshape(-1)
+        right_flat = right_view.reshape(-1)
+        outer = np.outer(left_flat, right_flat)
+        tensor = outer.reshape(left_shape + right_shape)
+        order = _TensorNetworkNumeric._interleave_order(len(left_shape))
+        tensor = tensor.transpose(order)
+        result_shape = tuple(l * r for l, r in zip(left_shape, right_shape))
+        return tensor.reshape(result_shape)
+
+    @staticmethod
+    def _torch_kron(left_view, right_view, left_shape, right_shape):
+        left_flat = left_view.reshape(-1)
+        right_flat = right_view.reshape(-1)
+        outer = torch.outer(left_flat, right_flat)
+        tensor = outer.reshape(left_shape + right_shape)
+        order = _TensorNetworkNumeric._interleave_order(len(left_shape))
+        tensor = tensor.permute(order)
+        result_shape = tuple(l * r for l, r in zip(left_shape, right_shape))
+        return tensor.reshape(result_shape)
 
     @staticmethod
     def to_host(value):
