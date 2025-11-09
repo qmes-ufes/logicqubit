@@ -7,6 +7,6 @@ from logicqubit import zhegalkin
 from logicqubit import oracle
 from logicqubit import synthesis
 
-__version__ = "1.6.3"
+__version__ = "1.6.4"
 
 print("logicqubit version "+__version__)

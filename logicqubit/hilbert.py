@@ -6,8 +6,11 @@
 # Apache License
 
 import numpy as np
+import tensornetwork as tn
 from sympy.physics.quantum import TensorProduct
 from logicqubit.utils import *
+
+tn.set_default_backend("numpy")
 
 """
 Hilbert space
@@ -85,9 +88,71 @@ class Hilbert():
         return Hilbert.__first_left
 
 
-"""
-Wrap methods from the numpy, cupy and sympy libraries.
-"""
+class _TensorNetworkNumeric:
+    """Helper methods that rely on TensorNetwork operations for numeric work."""
+
+    @staticmethod
+    def _to_ndarray(value):
+        if isinstance(value, np.ndarray):
+            return value
+        return np.array(value)
+
+    @staticmethod
+    def matmul(left, right):
+        left_tensor = _TensorNetworkNumeric._to_ndarray(left)
+        right_tensor = _TensorNetworkNumeric._to_ndarray(right)
+        if left_tensor.ndim == 0 or right_tensor.ndim == 0:
+            return left_tensor * right_tensor
+
+        left_node = tn.Node(left_tensor, name="matrix_left")
+        right_node = tn.Node(right_tensor, name="matrix_right")
+        if not left_node.edges or not right_node.edges:
+            return left_tensor * right_tensor
+
+        tn.connect(left_node.edges[-1], right_node.edges[0])
+        result = tn.contract_between(left_node, right_node, name="matrix_product")
+        return result.tensor
+
+    @staticmethod
+    def kron(left, right):
+        left_tensor = _TensorNetworkNumeric._to_ndarray(left)
+        right_tensor = _TensorNetworkNumeric._to_ndarray(right)
+        if left_tensor.ndim == 0 or right_tensor.ndim == 0:
+            return left_tensor * right_tensor
+
+        left_shape, right_shape = _TensorNetworkNumeric._match_shapes(left_tensor.shape, right_tensor.shape)
+        left_view = left_tensor.reshape(left_shape)
+        right_view = right_tensor.reshape(right_shape)
+
+        kron_node = tn.outer_product(
+            tn.Node(left_view, name="kron_left"),
+            tn.Node(right_view, name="kron_right"),
+            name="kron_outer"
+        )
+        tensor = kron_node.tensor
+        order = _TensorNetworkNumeric._interleave_order(len(left_shape))
+        tensor = np.transpose(tensor, order)
+        result_shape = tuple(l * r for l, r in zip(left_shape, right_shape))
+        return tensor.reshape(result_shape)
+
+    @staticmethod
+    def _match_shapes(left_shape, right_shape):
+        left_shape = tuple(left_shape) if left_shape else (1,)
+        right_shape = tuple(right_shape) if right_shape else (1,)
+        if len(left_shape) < len(right_shape):
+            left_shape = (1,) * (len(right_shape) - len(left_shape)) + left_shape
+        elif len(right_shape) < len(left_shape):
+            right_shape = (1,) * (len(left_shape) - len(right_shape)) + right_shape
+        return left_shape, right_shape
+
+    @staticmethod
+    def _interleave_order(rank):
+        order = []
+        for i in range(rank):
+            order.extend([i, i + rank])
+        return order
+
+
 class Matrix:
 
     def __init__(self, matrix, numeric=True):
@@ -116,7 +181,7 @@ class Matrix:
         if isinstance(other, Matrix):
             other = other.get()
             if self.__numeric:
-                result = np.dot(self.__matrix, other)  # for numpy matrix
+                result = _TensorNetworkNumeric.matmul(self.__matrix, other)
             else:
                 result = self.__matrix * other
         else:
@@ -135,7 +200,7 @@ class Matrix:
 
     def kron(self, other):  # Kronecker product
         if self.__numeric:
-            result = np.kron(self.__matrix, other.get())
+            result = _TensorNetworkNumeric.kron(self.__matrix, other.get())
         else:
             result = TensorProduct(self.__matrix, other.get())
         return Matrix(result, self.__numeric)
