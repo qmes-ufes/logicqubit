@@ -27,7 +27,17 @@
 
 # Installation
 
+CPU-only install:
+
+```
 pip install logicqubit
+```
+
+GPU (PyTorch/CUDA) extras:
+
+```
+pip install "logicqubit[cuda]"
+```
 
 # Startup
 

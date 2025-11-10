@@ -15,7 +15,16 @@ here = path.abspath(path.dirname(__file__))
 with open(path.join(here, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
-REQUIRES = ['sympy','numpy','matplotlib','tensornetwork']
+REQUIRES = [
+    'sympy>=1.12,<2',
+    'numpy>=1.24,<3',
+    'matplotlib>=3.7,<4',
+    'tensornetwork>=0.4.6',
+]
+
+EXTRAS_REQUIRE = {
+    'cuda': ['torch>=2.2,<3'],
+}
 
 setup(
     name='logicqubit',
@@ -52,5 +61,6 @@ setup(
 
     packages=find_packages(exclude=['contrib', 'docs', 'tests']),
     install_requires=REQUIRES,
+    extras_require=EXTRAS_REQUIRE,
 
 )
