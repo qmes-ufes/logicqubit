@@ -20,7 +20,7 @@ bibliography: paper.bib
 
 # Summary
 
-`LogicQubit` is a simple and lightweight Python framework for the simulation of quantum logic circuits that combines high-precision numerical routines with explicit symbolic representations of states and operators. It supports a dense state-vector backend on the CPU, an optional GPU-accelerated variant based on `CuPy` (`logicqubit-gpu`), and a newer tensor-network backend that enables more efficient simulations of certain many-qubit systems. This unified numerical symbolic design, together with multiple execution backends, is its main distinguishing feature compared to hardware-oriented platforms such as `Qiskit` [@Qiskit] and `Cirq` [@Cirq], while keeping a small code base and a straightforward API.
+`LogicQubit` is a simple and lightweight Python framework for the simulation of quantum logic circuits that combines high-precision numerical routines with explicit symbolic representations of states and operators. It supports a dense state-vector backend on the CPU, an optional GPU-accelerated variant based on `CuPy` (`logicqubit-gpu`), and a newer tensor-network backend that enables more efficient simulations of certain many-qubit systems. This unified numerical–symbolic design, together with multiple execution backends, is its main distinguishing feature compared to hardware-oriented platforms such as `Qiskit` [@Qiskit] and `Cirq` [@Cirq], while keeping a small code base and a straightforward API.
 
 While many libraries emphasize device interfacing or transpilation to specific quantum processors, `LogicQubit` focuses on a transparent, algebraically consistent formulation of quantum logic. The framework integrates matrix-based simulation, operator algebra, and quantum state visualization within a unified API, enabling construction and analysis of gates, density matrices, and multi-qubit entanglement, as well as analytic inspection of amplitudes, phases, and commutation relations. This makes `LogicQubit` suitable for algorithm prototyping, verification of circuit identities, and conceptual studies on the structure of quantum information, while remaining lightweight and interoperable with established ecosystems such as `NumPy`/`SymPy` and adjacent simulation toolchains (e.g., `QuTiP` [@QuTiP] and `PennyLane` [@PennyLane]).
 
@@ -38,9 +38,20 @@ Finally, by enabling direct inspection and visualization of quantum states, `Log
 
 # State of the field
 
-The current open-source ecosystem for quantum computing spans hardware-oriented SDKs (e.g., `Qiskit` [@Qiskit], `Cirq` [@Cirq]) and research-focused simulators and differentiable programming toolchains (e.g., `QuTiP` [@QuTiP], `PennyLane` [@PennyLane]). Many widely used platforms emphasize execution on (or compilation toward) specific devices, which can introduce additional abstraction layers.
+Open-source quantum software spans several complementary tool classes, including hardware-oriented SDKs focused on circuit construction, compilation, and
+execution backends; research-oriented simulators and analysis toolkits; and frameworks that emphasize differentiable programming for variational and hybrid
+quantum–classical workflows. These ecosystems address different priorities and user goals, from device-facing execution to theoretical analysis and rapid
+prototyping.
 
-`LogicQubit` complements this ecosystem by emphasizing an explicit, algebraically transparent representation of states and operators, while still providing multiple numerical backends (CPU, GPU via `CuPy`, and tensor networks) for practical simulation workloads.
+Hardware-centric platforms such as `Qiskit` [@Qiskit] and `Cirq` [@Cirq] provide mature environments for developing quantum circuits and running them across a
+variety of simulators and target backends, which is particularly valuable when portability and integration with execution workflows are central requirements.
+On the research side, `QuTiP` [@QuTiP] offers extensive capabilities for operator-based modeling and simulation in quantum mechanics, while `PennyLane`
+[@PennyLane] is widely used for differentiable programming and variational algorithms that integrate with automatic differentiation and machine-learning
+toolchains.
+
+`LogicQubit` complements this landscape by focusing on a lightweight, algebra-first workflow for circuit simulation and inspection. Its unified
+numerical–symbolic representation of states and operators supports transparent analysis of amplitudes and phases, and its integrated visualization utilities
+aid step-by-step understanding of circuit evolution.
 
 # Software design
 
@@ -67,6 +78,15 @@ Once the circuit is defined, the model is instantiated by creating a `LogicQuBit
 
 # Code Availability
 
-`LogicQubit` can be installed from PyPI using `pip install logicqubit` for the CPU/tensor-network version and `pip install logicqubit-gpu` for the CuPy-based GPU-enabled variant. For an updated list of functionalities and examples, we recommend visiting the project’s documentation and code in the public repository at https://github.com/qmes-ufes/logicqubit and https://github.com/qmes-ufes/logicqubit-algorithms, where release notes and usage notebooks are maintained.
+`LogicQubit` can be installed from PyPI using `pip install logicqubit` for the CPU/tensor-network version and `pip install logicqubit-gpu` for the `CuPy`-based GPU-enabled variant. For an updated list of functionalities and examples, we recommend visiting the project documentation and public repositories:
 
+- https://github.com/qmes-ufes/logicqubit
+- https://github.com/qmes-ufes/logicqubit-algorithms
 
+Release notes and usage notebooks are maintained in the repositories.
+
+# Acknowledgements
+
+The authors acknowledge financial support from the Brazilian funding agencies FAPES (1044/2022, 1081/2022 - P:2022-8L35F) and CNPq (under grants 302557/2025-3, 444450/2024-6, 305227/2024-6, and 442781/2023-7) and are also grateful for the computational resources of the Sci-com/NC3/UFES.
+
+# References
