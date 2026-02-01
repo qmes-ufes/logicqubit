@@ -17,6 +17,8 @@ LogicQuBit is ideal for educators, researchers and enthusiasts who want to explo
 - **Measurement utilities**:
   - expected-value / probability distribution for one or more qubits
   - single-shot measurement with state collapse
+- **Truth-table / oracle synthesis via Zhegalkin polynomials**:
+  - build Boolean oracles from compact truth-table descriptions
 - Optional numeric backend configuration via **TensorNetwork** (and optional CUDA-enabled torch)
 
 ---
@@ -343,6 +345,22 @@ Result:
 
 * [https://github.com/qmes-ufes/logicqubit-algorithms](https://github.com/qmes-ufes/logicqubit-algorithms)
 * See also the `examples/` folder in this repository for:
+  * Grover (2–4 qubits)
+  * Quantum Fourier Transform (2–4 qubits)
+  * Phase kickback and phase estimation variants
+  * Eigenvalue/phase estimation demos
+  * Quantum teleportation
+  * Simon’s algorithm (3 qubits)
+  * Shor (3-qubit demo and N=15 example)
+  * Error correction demos (bit-flip and phase-flip)
+  * VQE examples (H₂ and small toy models)
+  * Bell/entanglement notebooks (including Bell-inequality variants)
+  * Zhegalkin notebooks (multiple input/output sizes)
 
-  * Grover (2 qubits), phase kickback, phase estimation variants, symbolic examples, and truth-table/oracle demos.
+# License
 
+LogicQuBit is released under the **Apache License, Version 2.0**.
+
+In short, this is a permissive license that allows use, modification, and distribution (including in commercial projects), provided you keep the copyright notice and the license text.
+
+See the `LICENSE` file for the full text.
