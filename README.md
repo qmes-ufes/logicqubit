@@ -333,7 +333,7 @@ Result:
 |1001>  phi=-0.438  E=-2.474874
 ```
 
-![](https://github.com/clnrp/logicqubit/blob/master/images/1769913080.png)
+![](images/1769913080.png)
 
 > This example uses `scipy.linalg.expm` (SciPy is not a strict dependency of LogicQuBit, so install it if needed).
 
@@ -341,7 +341,7 @@ Result:
 
 # Other code samples
 
-* [https://github.com/clnrp/logicqubit-algorithms](https://github.com/clnrp/logicqubit-algorithms)
+* [https://github.com/qmes-ufes/logicqubit-algorithms](https://github.com/qmes-ufes/logicqubit-algorithms)
 * See also the `examples/` folder in this repository for:
 
   * Grover (2 qubits), phase kickback, phase estimation variants, symbolic examples, and truth-table/oracle demos.
